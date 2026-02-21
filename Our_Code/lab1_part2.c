@@ -149,7 +149,7 @@
 
         xil_printf("Initialization Complete, System Ready!\n");
 
-        xTaskCreate(vKeypadTask,					/* The function that implements the task. */
+        xTaskCreate(vKeypadTask,				/* The function that implements the task. */
                     "main task", 				/* Text name for the task, provided to assist debugging only. */
                     configMINIMAL_STACK_SIZE, 	/* The stack allocated to the task. */
                     NULL, 						/* The task parameter is not used, so set to NULL. */

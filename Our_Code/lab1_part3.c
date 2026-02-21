@@ -114,30 +114,23 @@
 
         xil_printf("Initialization Complete, System Ready!\n");
 
-        // Create Queues
+        // Create queues
         xKeypadDisplayQueue = xQueueCreate(1, sizeof(KeypadState_t));
-        // FIX: Corrected typo 'xDeypad...'
         if (xKeypadDisplayQueue == NULL) {
             xil_printf("ERROR: Failed to create keypad display queue \r\n");
             return 1;
         }
 
         xButtonsRGBQueue = xQueueCreate(1, sizeof(u32));
-        // FIX: Corrected 'xil_print' to 'xil_printf'
         if (xButtonsRGBQueue == NULL) {
-            xil_printf("ERROR: Failed to create buttons-RGB queue \r\n");
+            xil_printf("ERROR: Failed to create buttons RGB queue \r\n");
             return 1;
         }
 
         // Create Tasks
         xTaskCreate(vKeypadTask, "Keypad", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-        
-        // FIX: Added the missing vButtonsTask
         xTaskCreate(vButtonsTask, "Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-
         xTaskCreate(vRGBTask, "RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
-        
-        // FIX: Only create this ONCE
         xTaskCreate(vDisplayTask, "Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
         vTaskStartScheduler();
@@ -148,56 +141,46 @@
 
    static void vButtonsTask(void *pvParameters)
 {
-    u32 button_value;
-    static u32 prev_button_value = 0;
-    
-    xil_printf("Button Task started\r\n");
-    xil_printf("Button 8: Increase brightness\r\n");
-    xil_printf("Button 1: Decrease brightness\r\n");
+    u32 button_val;
+    static u32 prev_button_val = 0;
     
     while (1) {
-        button_value = XGpio_DiscreteRead(&PUSH_BUTTONInst, 1);
+        button_val = XGpio_DiscreteRead(&PUSH_BUTTONInst, 1);
         
-        // Only send if button state changed
-        if (button_value != prev_button_value) {
-            // Step 3.7: Send button data to RGB task
-            if (xQueueOverwrite(xButtonsRGBQueue, &button_value) != pdTRUE) {
-                xil_printf("[Buttons] ERROR: Queue send failed\r\n");
-            } else if (button_value != 0) {  // Only log when a button is pressed
-                xil_printf("Buttons Pressed: 0x%02X\r\n", button_value);
+        if (button_val != prev_button_val) {
+            xQueueOverwrite(xButtonsRGBQueue, &button_val);
+            if (button_val != 0) {
+                xil_printf("Button: 0x%02X\r\n", button_val);
             }
-            
-            prev_button_value = button_value;
+            prev_button_val = button_val;
         }
         
-        vTaskDelay(pdMS_TO_TICKS(50));  // Check buttons every 50ms
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
     /*****************************************************************************/
 
-    // RGB Task - receives button value from queue (part 2 style for PWM)
     static void vRGBTask(void *pvParameters)
     {
         const uint8_t color = RGB_CYAN;
         const TickType_t xPeriod = 25;
         TickType_t xOnDelay = 0;
         TickType_t xOffDelay = xPeriod - xOnDelay;
-        u32 received_data;
-        static u32 prev_button_value = 0;
-
-        xil_printf("[RGB] Task started\r\n");
+        u32 button_val;
+        static u32 prev_button_val = 0;
 
         while (1){
-            if (xQueueReceive(xButtonsRGBQueue, &received_data, 0) == pdTRUE){
-                if (received_data != prev_button_value) {
-                    if (received_data == 0x08 && xOnDelay < xPeriod) {
+            if (xQueueReceive(xButtonsRGBQueue, &button_val, 0) == pdTRUE){
+                if (button_val != prev_button_val) {
+                    if (button_val == 0x08 && xOnDelay < xPeriod) {
+
                         xOnDelay++;
                         xil_printf("xOnDelay: %d, xOffDelay: %d\n", xOnDelay, xPeriod - xOnDelay);
-                    } else if (received_data == 0x01 && xOnDelay > 0) {
+                    } else if (button_val == 0x01 && xOnDelay > 0) {
                         xOnDelay--;
                         xil_printf("xOnDelay: %d, xOffDelay: %d\n", xOnDelay, xPeriod - xOnDelay);
                     }
-                    prev_button_value = received_data;
+                    prev_button_val = button_val;
                 }
             }
 
@@ -207,6 +190,7 @@
             if (xOnDelay == 0) {
                 XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, 0);
             }
+            
             vTaskDelay(xOnDelay);
 
             /* LED off for xOffDelay ticks */
@@ -217,25 +201,19 @@
 
 
     static void vDisplayTask( void *pvParameters ) {
-        KeypadState_t current_data = {0, 0}; // Default/Safe values
-        KeypadState_t received_data;
-        const TickType_t xDelay = pdMS_TO_TICKS(10); 
-        
-        xil_printf("[Display] Task started\r\n");
+        KeypadState_t data = {0, 0};
+        KeypadState_t new_data;
+        const TickType_t xDelay = pdMS_TO_TICKS(10);
         
         while (1) {
-            // 1. Check for NEW data, but do NOT wait/block
-            if (xQueueReceive(xKeypadDisplayQueue, &received_data, 0) == pdTRUE) {
-                current_data = received_data; // Update local state
+            if (xQueueReceive(xKeypadDisplayQueue, &new_data, 0) == pdTRUE) {
+                data = new_data;
             }
             
-            // 2. ALWAYS refresh the display using current_data
-            // Right Digit
-            XGpio_DiscreteWrite(&SSDInst, 1, SSD_decode(current_data.current_key, 1)); 
+            XGpio_DiscreteWrite(&SSDInst, 1, SSD_decode(data.current_key, 1));
             vTaskDelay(xDelay);
             
-            // Left Digit
-            XGpio_DiscreteWrite(&SSDInst, 1, SSD_decode(current_data.previous_key, 0));
+            XGpio_DiscreteWrite(&SSDInst, 1, SSD_decode(data.previous_key, 0));
             vTaskDelay(xDelay);
         }
     }
@@ -243,58 +221,45 @@
     
 
     static void vKeypadTask( void *pvParameters ) {
-    u16 keystate;
-    XStatus status, previous_status = KYPD_NO_KEY;
-    u8 new_key, current_key = 'x', previous_key = 'x';
-    
-    // Structure to hold data for the queue
-    KeypadState_t keypad_data;
+        u16 keystate;
+        XStatus status, previous_status = KYPD_NO_KEY;
+        u8 new_key, current_key = 'x', previous_key = 'x';
+        KeypadState_t keypad_data;
+        const TickType_t xDelay = pdMS_TO_TICKS(50);
 
-    // 50ms is fast enough for human input but saves CPU compared to 10ms
-    const TickType_t xDelay = pdMS_TO_TICKS(50); 
+        xil_printf("Pmod KYPD app started. Press any key on the Keypad.\r\n");
 
-    xil_printf("Pmod KYPD app started. Press any key on the Keypad.\r\n");
+        while (1) {
+            // Capture state of the keypad
+            keystate = KYPD_getKeyStates(&KYPDInst);
 
-    while (1) {
-        // 1. Capture state of the keypad
-        keystate = KYPD_getKeyStates(&KYPDInst);
-        status = KYPD_getKeyPressed(&KYPDInst, keystate, &new_key);
+            // Determine which single key is pressed, if any
+            // if a key is pressed, store the value of the new key in new_key
+            status = KYPD_getKeyPressed(&KYPDInst, keystate, &new_key);
+            // Print key detect if a new key is pressed or if status has changed
+            if (status == KYPD_SINGLE_KEY && previous_status == KYPD_NO_KEY) {
+                xil_printf("Key Pressed: %c\r\n", (char) new_key);
 
-        // 2. Check for Valid Single Key Press (Rising Edge)
-        if (status == KYPD_SINGLE_KEY && previous_status == KYPD_NO_KEY) {
-            xil_printf("Key Pressed: %c\r\n", (char) new_key);
+                previous_key = current_key;
+                current_key = new_key;
 
-            // Shift the keys
-            previous_key = current_key;
-            current_key = new_key;
+                keypad_data.current_key = current_key;
+                keypad_data.previous_key = previous_key;
+                xQueueOverwrite(xKeypadDisplayQueue, &keypad_data);
 
-            // Prepare the data packet
-            keypad_data.current_key = current_key;
-            keypad_data.previous_key = previous_key;
-
-            // Send to Queue (Overwrites old data so display always shows latest)
-            if (xQueueOverwrite(xKeypadDisplayQueue, &keypad_data) != pdTRUE) {
-                xil_printf("[Keypad] ERROR: Queue send failed\r\n");
-            } else {
-                xil_printf("[Keypad] Sent to display: current='%c', previous='%c'\r\n", 
-                           current_key, previous_key);
+            } else if (status == KYPD_MULTI_KEY && status != previous_status) {
+                xil_printf("Error: Multiple keys pressed\r\n");
             }
 
-        } else if (status == KYPD_MULTI_KEY && status != previous_status) {
-            xil_printf("Error: Multiple keys pressed\r\n");
+            // display the value of `status` each time it changes
+            if (status != previous_status) {
+                xil_printf("Status: %d\r\n", status);
+            }
+            
+            previous_status = status;
+            vTaskDelay(xDelay);
         }
-
-        // 3. Print status changes (Idle -> Pressed -> Idle)
-        if (status != previous_status) {
-            xil_printf("Status: %d\r\n", status);
-        }
-        
-        previous_status = status;
-
-        // 4. Delay to allow other tasks to run
-        vTaskDelay(xDelay);
     }
-}
 
 
 
