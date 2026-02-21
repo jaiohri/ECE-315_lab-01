@@ -44,7 +44,9 @@
     // TODO: Define the seven-segment display (SSD) base address.
 
     #define SSD_DEVICE_ID      XPAR_GPIO_SSD_BASEADDR // from part 1
+
     #define RGB_LED_DEVICE_ID   XPAR_GPIO_LEDS_BASEADDR
+
     #define PUSH_BUTTON_DEVICE_ID       XPAR_GPIO_INPUTS_BASEADDR
 
     /*****************************************************************************/
@@ -59,7 +61,9 @@
     // TODO: Declare the seven-segment display peripheral here.
 
     XGpio    SSDInst;
+
     XGpio    RGB_LEDInst; 
+
     XGpio    PUSH_BUTTONInst;
 
     QueueHandle_t xKeypadDisplayQueue;
@@ -76,68 +80,36 @@
 
     // Function prototypes
     void InitializeKeypad();
+    void InitializePeripherals();
     static void vKeypadTask( void *pvParameters );
-    static void vRGBTask( void *pvParameters ); //part2
+    static void vRGBTask( void *pvParameters );
     static void vButtonsTask( void *pvParameters );
     static void vDisplayTask( void *pvParameters );
     u32 SSD_decode(u8 key_value, u8 cathode);
 
     /*****************************************************************************/
 
-    // Custom function to initialize our SSD
+    void InitializePeripherals(void)
+    {
+        // 1. Initialize SSD
+        XGpio_Initialize(&SSDInst, SSD_DEVICE_ID);
+        XGpio_SetDataDirection(&SSDInst, 1, 0x00);
 
-    void InitializeSSD() {
-        int status;
+        // 2. Initialize RGB LED
+        XGpio_Initialize(&RGB_LEDInst, RGB_LED_DEVICE_ID);
+        XGpio_SetDataDirection(&RGB_LEDInst, 2, 0x00);
 
-        // 1. Initialize the GPIO driver
-        status = XGpio_Initialize(&SSDInst, SSD_DEVICE_ID);
-        if (status != XST_SUCCESS) {
-            xil_printf("SSD Initialization Failed!\r\n");
-            return;
-        }
-
-        // 2. Set the Direction
-        // We use channel 1; there's only one channel defined in xparameters.h
-        XGpio_SetDataDirection(&SSDInst, 1, 0x00); 
+        // 3. Initialize Push Button
+        XGpio_Initialize(&PUSH_BUTTONInst, PUSH_BUTTON_DEVICE_ID);
+        XGpio_SetDataDirection(&PUSH_BUTTONInst, 1, 0x0F);  // channel 1, configure as inputs
     }
 
-
-    void InitializeRGB_LED() {
-        int status;
-
-        // 1. Initialize the GPIO driver
-        status = XGpio_Initialize(&RGB_LEDInst, RGB_LED_DEVICE_ID);
-        if (status != XST_SUCCESS) {
-            xil_printf("RGB LED Initialization Failed!\r\n");
-            return;
-        }
-
-        // 2. Set the Direction
-        // We use channel 1; there's only one channel defined in xparameters.h
-        XGpio_SetDataDirection(&RGB_LEDInst, 2, 0x00); 
-    }
-
-    void InitializePush_Button() {
-        int status;
-
-        // 1. Initialize the GPIO driver
-        status = XGpio_Initialize(&PUSH_BUTTONInst, XPAR_GPIO_INPUTS_BASEADDR);
-        if (status != XST_SUCCESS) {
-            xil_printf("Push Button Initialization Failed!\r\n");
-            return;
-        }
-
-        // 2. Set the Direction
-        // We use channel 1; there's only one channel defined in xparameters.h
-        XGpio_SetDataDirection(&PUSH_BUTTONInst, 1, 0x00); // channel 1 from Vivado Block Diagram for 'button'
-    }
-
-    int main(void) {
-        // Initialize Hardware
+    int main(void)
+    {
+        // Initialize keypad
         InitializeKeypad();
-        InitializeSSD();
-        InitializeRGB_LED();
-        InitializePush_Button();
+
+        InitializePeripherals();
 
         xil_printf("Initialization Complete, System Ready!\n");
 
@@ -202,57 +174,45 @@
 }
     /*****************************************************************************/
 
-    // RGB Task - ONLY controls RGB LED, receives from buttons queue
-    static void vRGBTask(void *pvParameters){
-    const uint8_t color = RGB_CYAN;
-    u32 received_data;
-    static u32 prev_button_value = 0;
-    
-    // Define the missing variables
-    const TickType_t xPeriod = 20; 
-    static TickType_t xON = 0;   
-    TickType_t xOFF = 20;
+    // RGB Task - receives button value from queue (part 2 style for PWM)
+    static void vRGBTask(void *pvParameters)
+    {
+        const uint8_t color = RGB_CYAN;
+        const TickType_t xPeriod = 25;
+        TickType_t xOnDelay = 0;
+        TickType_t xOffDelay = xPeriod - xOnDelay;
+        u32 received_data;
+        static u32 prev_button_value = 0;
 
-    xil_printf("[RGB] Task started\r\n");
+        xil_printf("[RGB] Task started\r\n");
 
-    while (1) {
-        // FIX: Change timeout to 0 (Non-blocking)
-        // If we wait here, the PWM stops and the LED flickers!
-        if (xQueueReceive(xButtonsRGBQueue, &received_data, 0) == pdTRUE) {
-            
-            if (received_data != prev_button_value) {
-                // Button 8: Increase Brightness
-                if (received_data == 0x08 && xON < xPeriod) {
-                    xON++; 
-                    xil_printf("xON: %d\r\n", xON);
-                } 
-                // Button 1: Decrease Brightness
-                else if (received_data == 0x01 && xON > 0) {
-                    xON--;
-                    xil_printf("xON: %d\r\n", xON);
+        while (1){
+            if (xQueueReceive(xButtonsRGBQueue, &received_data, 0) == pdTRUE){
+                if (received_data != prev_button_value) {
+                    if (received_data == 0x08 && xOnDelay < xPeriod) {
+                        xOnDelay++;
+                        xil_printf("xOnDelay: %d, xOffDelay: %d\n", xOnDelay, xPeriod - xOnDelay);
+                    } else if (received_data == 0x01 && xOnDelay > 0) {
+                        xOnDelay--;
+                        xil_printf("xOnDelay: %d, xOffDelay: %d\n", xOnDelay, xPeriod - xOnDelay);
+                    }
+                    prev_button_value = received_data;
                 }
-                prev_button_value = received_data;
             }
-        }
 
-        // Calculate OFF time
-        xOFF = xPeriod - xON;
+            xOffDelay = xPeriod - xOnDelay;
+            /* LED on for xOnDelay ticks */
+            XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, color);
+            if (xOnDelay == 0) {
+                XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, 0);
+            }
+            vTaskDelay(xOnDelay);
 
-        // --- Software PWM Logic ---
-        
-        // 1. Turn ON
-        if (xON > 0) {
-            XGpio_DiscreteWrite(&RGB_LEDInst, 2, color); // Note: Ensure channel is correct (usually 1)
-            vTaskDelay(xON);
-        }
-
-        // 2. Turn OFF
-        if (xOFF > 0) {
-            XGpio_DiscreteWrite(&RGB_LEDInst, 2, 0);
-            vTaskDelay(xOFF);
+            /* LED off for xOffDelay ticks */
+            XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, 0);
+            vTaskDelay(xOffDelay);
         }
     }
-}
 
 
     static void vDisplayTask( void *pvParameters ) {
