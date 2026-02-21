@@ -118,30 +118,16 @@
 
     void InitializePeripherals(void)
     {
-        int status;
-
         // 1. Initialize SSD
-        status = XGpio_Initialize(&SSDInst, SSD_DEVICE_ID);
-        if (status != XST_SUCCESS) {
-            xil_printf("Initialization Failed for SSD.\n");
-            return;
-        }
+        XGpio_Initialize(&SSDInst, SSD_DEVICE_ID);
         XGpio_SetDataDirection(&SSDInst, 1, 0x00);
 
         // 2. Initialize RGB LED
-        status = XGpio_Initialize(&RGB_LEDInst, RGB_LED_DEVICE_ID);
-        if (status != XST_SUCCESS) {
-            xil_printf("Initialization Failed for RGB LED.\n");
-            return;
-        }
+        XGpio_Initialize(&RGB_LEDInst, RGB_LED_DEVICE_ID);
         XGpio_SetDataDirection(&RGB_LEDInst, 2, 0x00);
 
         // 3. Initialize Push Button
-        status = XGpio_Initialize(&PUSH_BUTTONInst, PUSH_BUTTON_DEVICE_ID);
-        if (status != XST_SUCCESS) {
-            xil_printf("Initialization Failed for Push Button.\n");
-            return;
-        }
+        XGpio_Initialize(&PUSH_BUTTONInst, PUSH_BUTTON_DEVICE_ID);
         XGpio_SetDataDirection(&PUSH_BUTTONInst, 1, 0x0F);  // channel 1, configure as inputs
     }
 
