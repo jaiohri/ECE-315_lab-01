@@ -72,7 +72,7 @@
     typedef struct {
         u8 current_key;
         u8 previous_key;
-    } KeypadData_t;
+    } KeypadState_t;
 
 
 
@@ -109,12 +109,13 @@
         // Initialize keypad
         InitializeKeypad();
 
+        // Initialize peripherals
         InitializePeripherals();
 
         xil_printf("Initialization Complete, System Ready!\n");
 
         // Create Queues
-        xKeypadDisplayQueue = xQueueCreate(1, sizeof(KeypadData_t));
+        xKeypadDisplayQueue = xQueueCreate(1, sizeof(KeypadState_t));
         // FIX: Corrected typo 'xDeypad...'
         if (xKeypadDisplayQueue == NULL) {
             xil_printf("ERROR: Failed to create keypad display queue \r\n");
@@ -216,8 +217,8 @@
 
 
     static void vDisplayTask( void *pvParameters ) {
-        KeypadData_t current_data = {0, 0}; // Default/Safe values
-        KeypadData_t received_data;
+        KeypadState_t current_data = {0, 0}; // Default/Safe values
+        KeypadState_t received_data;
         const TickType_t xDelay = pdMS_TO_TICKS(10); 
         
         xil_printf("[Display] Task started\r\n");
@@ -247,7 +248,7 @@
     u8 new_key, current_key = 'x', previous_key = 'x';
     
     // Structure to hold data for the queue
-    KeypadData_t keypad_data;
+    KeypadState_t keypad_data;
 
     // 50ms is fast enough for human input but saves CPU compared to 10ms
     const TickType_t xDelay = pdMS_TO_TICKS(50); 
