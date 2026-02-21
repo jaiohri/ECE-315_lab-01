@@ -70,104 +70,79 @@
 
     // Function prototypes
     void InitializeKeypad();
+    void InitializePeripherals();
     static void vKeypadTask( void *pvParameters );
 
     //PART 2
-    static void vRGBTask1( void *pvParameters );
+    static void vRGBTask( void *pvParameters );
 
-    // static void vRGBTask1(void *pvParameters);
     u32 SSD_decode(u8 key_value, u8 cathode);
 
     /*****************************************************************************/
 
-    static void vRGBTask1(void *pvParameters)
+    static void vRGBTask(void *pvParameters)
     {
-        const uint8_t color = RGB_BLUE;
+        const uint8_t color = RGB_CYAN;
         const TickType_t xPeriod = 25;
-        TickType_t xON_Delay = 0;
-        TickType_t xOFF_Delay = xPeriod - xON_Delay;
+        TickType_t xOnDelay = 0;
+        TickType_t xOffDelay = xPeriod - xOnDelay;
         u32 button_value;
 
         while (1){
             button_value = XGpio_DiscreteRead(&PUSH_BUTTONInst, 1);
            
-            if (button_value == 0x08 && xON_Delay < xPeriod) {
+            if (button_value == 0x08 && xOnDelay < xPeriod) {
                 vTaskDelay(100);
-                xON_Delay = xON_Delay + 1;
-                xil_printf("\nxON: %d\n", xON_Delay);
-                xil_printf("\nxOFF: %d\n", xOFF_Delay);
-            } else if (button_value == 0x01 && xON_Delay > 0) {
+                xOnDelay++;
+                xil_printf("xOnDelay: %d, xOffDelay: %d\n", xOnDelay, xPeriod - xOnDelay);
+            } else if (button_value == 0x01 && xOnDelay > 0) {
                 vTaskDelay(100);
-                xON_Delay = xON_Delay - 1;
-                xil_printf("\nxON: %d\n", xON_Delay);
-                xil_printf("\nxOFF: %d\n", xOFF_Delay);
+                xOnDelay--;
+                xil_printf("xOnDelay: %d, xOffDelay: %d\n", xOnDelay, xPeriod - xOnDelay);
             }
 
-            xOFF_Delay = xPeriod - xON_Delay;
-            // we set the LED on and keep it on by vTaskDelay(xON) time
+            xOffDelay = xPeriod - xOnDelay;
+            /* LED on for xOnDelay ticks */
             XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, color);
-
-            if (xON_Delay == 0) {
+            if (xOnDelay == 0) {
                 XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, 0);
             }
-            vTaskDelay(xON_Delay);
+            vTaskDelay(xOnDelay);
 
-            // we set the LED on and keep it off by vTaskDelay(xOFF) time
+            /* LED off for xOffDelay ticks */
             XGpio_DiscreteWrite(&RGB_LEDInst, RGB_CHANNEL, 0);
-            vTaskDelay(xOFF_Delay);
-
-
-            // xil_printf("\nxPeriod: %d\n", xPeriod);
+            vTaskDelay(xOffDelay);
         }
     }
 
 
-    // Custom function to initialize our SSD
-
-    void InitializeSSD() {
+    void InitializePeripherals(void)
+    {
         int status;
 
-        // 1. Initialize the GPIO driver
+        // 1. Initialize SSD
         status = XGpio_Initialize(&SSDInst, SSD_DEVICE_ID);
         if (status != XST_SUCCESS) {
-            xil_printf("SSD Initialization Failed!\r\n");
+            xil_printf("Initialization Failed for SSD.\n");
             return;
         }
+        XGpio_SetDataDirection(&SSDInst, 1, 0x00);
 
-        // 2. Set the Direction
-        // We use channel 1; there's only one channel defined in xparameters.h
-        XGpio_SetDataDirection(&SSDInst, 1, 0x00); 
-    }
-
-
-    void InitializeRGB_LED() {
-        int status;
-
-        // 1. Initialize the GPIO driver
+        // 2. Initialize RGB LED
         status = XGpio_Initialize(&RGB_LEDInst, RGB_LED_DEVICE_ID);
         if (status != XST_SUCCESS) {
-            xil_printf("RGB LED Initialization Failed!\r\n");
+            xil_printf("Initialization Failed for RGB LED.\n");
             return;
         }
+        XGpio_SetDataDirection(&RGB_LEDInst, 2, 0x00);
 
-        // 2. Set the Direction
-        // We use channel 1; there's only one channel defined in xparameters.h
-        XGpio_SetDataDirection(&RGB_LEDInst, 2, 0x00); 
-    }
-
-    void InitializePush_Button() {
-        int status;
-
-        // 1. Initialize the GPIO driver
-        status = XGpio_Initialize(&PUSH_BUTTONInst, XPAR_GPIO_INPUTS_BASEADDR);
+        // 3. Initialize Push Button
+        status = XGpio_Initialize(&PUSH_BUTTONInst, PUSH_BUTTON_DEVICE_ID);
         if (status != XST_SUCCESS) {
-            xil_printf("Push Button Initialization Failed!\r\n");
+            xil_printf("Initialization Failed for Push Button.\n");
             return;
         }
-
-        // 2. Set the Direction
-        // We use channel 1; there's only one channel defined in xparameters.h
-        XGpio_SetDataDirection(&PUSH_BUTTONInst, 1, 0x00); // channel 1 from Vivado Block Diagram for 'button'
+        XGpio_SetDataDirection(&PUSH_BUTTONInst, 1, 0x0F);  // channel 1, configure as inputs
     }
 
     int main(void)
@@ -180,9 +155,7 @@
     /*************************** Enter your code here ****************************/
         // TODO: Initialize SSD and set the GPIO direction to output.
 
-        InitializeSSD();
-        InitializeRGB_LED();
-        InitializePush_Button();
+        InitializePeripherals();
 
 
         
@@ -197,13 +170,8 @@
                     tskIDLE_PRIORITY,			/* The task runs at the idle priority. */
                     NULL);
 
-
-    xTaskCreate(vRGBTask1,               /* Pointer to the function that implements the task */
-                    "RGB Task",             /* Text name for debugging */
-                    configMINIMAL_STACK_SIZE, /* Stack depth - minimal is usually fine for LEDs */
-                    NULL,                   /* No parameters passed */
-                    tskIDLE_PRIORITY,       /* Priority: Keep same as keypad for Round Robin, or +1 to prioritize */
-                    NULL);                  /* Task handle not needed */
+        // Create RGB Task
+        xTaskCreate(vRGBTask, "RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
         vTaskStartScheduler();
         while(1);
@@ -266,14 +234,14 @@
             * Add a delay between updates for persistence of vision using `vTaskDelay`.
             */
 
-            ssd_value = SSD_decode(current_key, 1); // cathode = 0 means to the right SSD
-            XGpio_DiscreteWrite(&SSDInst, 1, ssd_value);
-
+            // Show current key on right SSD
+            u32 right_ssd = SSD_decode(current_key, 1);
+            XGpio_DiscreteWrite(&SSDInst, 1, right_ssd);
             vTaskDelay(xDelay);
 
-            ssd_value = SSD_decode(previous_key, 0); // cathode = 1 means to the left SSD
-            XGpio_DiscreteWrite(&SSDInst, 1, ssd_value); // params: Instance Pointer, Channel No., the 32-bit representation of the keypad value entered 
-
+            // Show previous key on left SSD
+            u32 left_ssd = SSD_decode(previous_key, 0);
+            XGpio_DiscreteWrite(&SSDInst, 1, left_ssd);
             vTaskDelay(xDelay);
 
                     

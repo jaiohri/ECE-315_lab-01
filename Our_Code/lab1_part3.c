@@ -85,8 +85,7 @@
     // Function prototypes
     void InitializeKeypad();
     static void vKeypadTask( void *pvParameters );
-    static void vRGBTask1( void *pvParameters ); //part2
-    // static void vRGBTask1(void *pvParameters);
+    static void vRGBTask( void *pvParameters ); //part2
     static void vButtonsTask( void *pvParameters );
     static void vDisplayTask( void *pvParameters );
     u32 SSD_decode(u8 key_value, u8 cathode);
@@ -171,7 +170,7 @@
         // FIX: Added the missing vButtonsTask
         xTaskCreate(vButtonsTask, "Buttons", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
 
-        xTaskCreate(vRGBTask1, "RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
+        xTaskCreate(vRGBTask, "RGB", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
         
         // FIX: Only create this ONCE
         xTaskCreate(vDisplayTask, "Display", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY, NULL);
@@ -215,7 +214,7 @@
     /*****************************************************************************/
 
     // RGB Task - ONLY controls RGB LED, receives from buttons queue
-    static void vRGBTask1(void *pvParameters){
+    static void vRGBTask(void *pvParameters){
     const uint8_t color = RGB_CYAN;
     ButtonData_t received_data;
     static u32 prev_button_value = 0;
