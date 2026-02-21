@@ -44,9 +44,7 @@
     // TODO: Define the seven-segment display (SSD) base address.
 
     #define SSD_DEVICE_ID      XPAR_GPIO_SSD_BASEADDR // from part 1
-
     #define RGB_LED_DEVICE_ID   XPAR_GPIO_LEDS_BASEADDR
-
     #define PUSH_BUTTON_DEVICE_ID       XPAR_GPIO_INPUTS_BASEADDR
 
     /*****************************************************************************/
@@ -61,9 +59,7 @@
     // TODO: Declare the seven-segment display peripheral here.
 
     XGpio    SSDInst;
-
     XGpio    RGB_LEDInst; 
-
     XGpio    PUSH_BUTTONInst;
 
     QueueHandle_t xKeypadDisplayQueue;
@@ -73,10 +69,6 @@
         u8 current_key;
         u8 previous_key;
     } KeypadData_t;
-
-    typedef struct {
-        u32 button_value; 
-    } ButtonData_t; 
 
 
 
@@ -157,7 +149,7 @@
             return 1;
         }
 
-        xButtonsRGBQueue = xQueueCreate(1, sizeof(ButtonData_t));
+        xButtonsRGBQueue = xQueueCreate(1, sizeof(u32));
         // FIX: Corrected 'xil_print' to 'xil_printf'
         if (xButtonsRGBQueue == NULL) {
             xil_printf("ERROR: Failed to create buttons-RGB queue \r\n");
@@ -185,7 +177,6 @@
 {
     u32 button_value;
     static u32 prev_button_value = 0;
-    ButtonData_t button_data;
     
     xil_printf("Button Task started\r\n");
     xil_printf("Button 8: Increase brightness\r\n");
@@ -196,10 +187,8 @@
         
         // Only send if button state changed
         if (button_value != prev_button_value) {
-            button_data.button_value = button_value;
-            
             // Step 3.7: Send button data to RGB task
-            if (xQueueOverwrite(xButtonsRGBQueue, &button_data) != pdTRUE) {
+            if (xQueueOverwrite(xButtonsRGBQueue, &button_value) != pdTRUE) {
                 xil_printf("[Buttons] ERROR: Queue send failed\r\n");
             } else if (button_value != 0) {  // Only log when a button is pressed
                 xil_printf("Buttons Pressed: 0x%02X\r\n", button_value);
@@ -216,7 +205,7 @@
     // RGB Task - ONLY controls RGB LED, receives from buttons queue
     static void vRGBTask(void *pvParameters){
     const uint8_t color = RGB_CYAN;
-    ButtonData_t received_data;
+    u32 received_data;
     static u32 prev_button_value = 0;
     
     // Define the missing variables
@@ -231,18 +220,18 @@
         // If we wait here, the PWM stops and the LED flickers!
         if (xQueueReceive(xButtonsRGBQueue, &received_data, 0) == pdTRUE) {
             
-            if (received_data.button_value != prev_button_value) {
+            if (received_data != prev_button_value) {
                 // Button 8: Increase Brightness
-                if (received_data.button_value == 0x08 && xON < xPeriod) {
+                if (received_data == 0x08 && xON < xPeriod) {
                     xON++; 
                     xil_printf("xON: %d\r\n", xON);
                 } 
                 // Button 1: Decrease Brightness
-                else if (received_data.button_value == 0x01 && xON > 0) {
+                else if (received_data == 0x01 && xON > 0) {
                     xON--;
                     xil_printf("xON: %d\r\n", xON);
                 }
-                prev_button_value = received_data.button_value;
+                prev_button_value = received_data;
             }
         }
 
